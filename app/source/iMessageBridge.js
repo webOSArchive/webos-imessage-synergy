@@ -80,10 +80,11 @@ enyo.kind({
 		this.applySettings();
 
 		this.$.myUpdater.CheckForUpdate("iMessage Bridge");
-		this.getSyncStatus();
+		this.getSyncReadiness();
 	},
 
 	handleActivate: function () {
+		this.getSyncReadiness();
 	},
 
 	handleDeactivate: function () {
@@ -134,7 +135,8 @@ enyo.kind({
 		}
 		return true;
 	},
-	getSyncStatus: function() {
+	getSyncReadiness: function() {
+		//TODO: This confirms there's ever been a sync, but we should also check if there's CURRENTLY an account
 		var q = {"query":{"from":"com.wosa.imessage.transport:1"}};
         this.$.findBffs.call(q);
 	},
@@ -167,14 +169,14 @@ enyo.kind({
 		//Write settings to DB8 for service to use
 		if (!this.dbConfigId) {	//Create record if none existed
 			enyo.log("Creating DB config record");
-			var syncRec = [{ _kind: "com.wosa.imessage.transport:1", "messageBridgeServer":useUrl}];
+			var syncRec = [{ _kind: "com.wosa.imessage.transport:1", "messageBridgeServer":this.useUrl}];
 			this.$.putBffs.call({objects: syncRec});	
 		} else {	//Merge record if one already existed
 			enyo.log("Updating DB config record with ID: " + this.dbConfigId);
 			var syncRec = {"_id":this.dbConfigId, "messageBridgeServer":this.useUrl };
 			this.$.mergeBffs.call({"objects": [syncRec]});
 		}
-		this.getSyncStatus();
+		this.getSyncReadiness();
 	},
 	serverCheckSuccess: function(inSender, inResponse, inRequest) {
 		this.$.spinner.hide();

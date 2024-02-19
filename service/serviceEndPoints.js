@@ -214,6 +214,7 @@ syncAssistant.prototype.run = function(future) {
       
       logNoticeably("making chat requests call! ");
       // Get all remote conversations from server
+      // TODO: Modify the querystring to get more than just 5 of everything!
       request(syncURL, function (error, response, body) {
          logNoticeably("in chat requests call! ");
          var createdChatThread = false;
