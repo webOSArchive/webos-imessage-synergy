@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>iMessage Bridge</title>
+    <script src="/usr/palm/frameworks/enyo/1.0/framework/enyo.js" type="text/javascript"></script>
+    <meta name='viewport' content='height=device-height'>
+    <!-- application stylesheet should come in after the one loaded by the framework -->
+    <link href="css/imessagebridge.css" media="screen" rel="stylesheet" type="text/css">
+</head>
+
+<body>
+    <script>
+        new iMessageBridge().renderInto(document.body);
+    </script>
+
+    <div id="aboutContent" style="display: none;">
+        <p align="center"><img src="icon.png"></p>
+        <p>This app provides additional settings for the iMessage Bridge Synergy service that was automatically installed along-side the app. It depends on a Message Bridge server running on a Mac on your home network.</p>
+    </div>
+</body>
+
+</html>

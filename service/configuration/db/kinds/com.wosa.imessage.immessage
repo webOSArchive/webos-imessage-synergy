@@ -1,0 +1,20 @@
+{
+    "id": "com.wosa.imessage.immessage:1",
+    "extends": [ "com.palm.immessage:1" ],
+    "owner": "com.wosa.imessage.service",
+    "sync": true,
+    "indexes": [
+        {
+            "name": "iMessageId",
+            "props": [
+                { "name": "iMessageId" }
+            ]
+        },
+        {
+            "name": "iDispatchId",
+            "props": [
+                { "name": "iDispatchId" }
+            ]
+        },
+    ]
+}

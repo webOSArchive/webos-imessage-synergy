@@ -1,0 +1,20 @@
+{
+    "id": "com.wosa.imessage.chatthread:1",
+    "extends": [ "com.palm.chatthread:1" ],
+    "owner": "com.wosa.imessage.service",
+    "sync": true,
+    "indexes": [
+        {
+            "name": "iMessageId",
+            "props": [
+                { "name": "iMessageId" }
+            ]
+        },
+        {
+            "name": "iMessageReplyId",
+            "props": [
+                { "name": "iMessageReplyId" }
+            ]
+        }
+    ]
+}

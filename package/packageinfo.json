@@ -1,0 +1,11 @@
+{
+  "id": "com.wosa.imessage",
+  "package_format_version": 2,
+  "loc_name": "iMessage Bridge Client for webOS",
+  "version": "0.0.1",
+  "vendor": "webOS Archive",
+  "vendorurl": "www.webosarchive.org",
+  "app": "com.wosa.imessage",
+  "services": ["com.wosa.imessage.service"],
+  "accounts": ["com.wosa.imessage.messages"]
+}

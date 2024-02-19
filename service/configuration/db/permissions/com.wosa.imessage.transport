@@ -1,0 +1,13 @@
+[
+    {
+        "type": "db.kind",
+        "object": "com.wosa.imessage.transport:1",
+        "caller": "com.wosa.imessage",
+        "operations": {
+            "read": "allow",
+            "create": "allow",
+            "delete": "allow",
+            "update": "allow"
+        }
+    }
+]

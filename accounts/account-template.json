@@ -1,0 +1,39 @@
+{
+    "templateId": "com.wosa.imessage.messages",
+    "loc_name": "iMessage Bridge",
+    "loc_shortName": "iMessage",
+    "hidden": false,
+    "invisible": false,
+    "implementation": "palm://com.wosa.imessage.service/",
+    "readPermissions": ["com.wosa.imessage.service", "com.wosa.imessage.service.*", "com.palm.app.messaging", "com.palm.app.phone", "com.palm.service.contacts.linker"],
+    "writePermissions": ["com.wosa.imessage.service", "com.wosa.imessage.service.*", "com.palm.app.messaging"],
+    "validator": "palm://com.wosa.imessage.service/checkCredentials",
+    "loc_serverLabel": "Server",
+    "loc_usernameLabel": "Username (anything if you don't have Basic Auth setup)",
+    "loc_passwordLabel": "Password (anything if you don't have Basic Auth setup)",
+    "icon": {"loc_32x32": "images/icon-32.png", "loc_48x48": "images/icon-48.png", "splitter": "images/icon-32.png"},
+    "capabilityProviders": [{
+        "id": "com.wosa.imessage.messages",
+        "loc_name": "iMessage Bridge",
+        "loc_shortName": "iMessage",
+        "serviceName":"iMessage",
+        "capability": "MESSAGING",
+        "alwaysOn": true,
+        "supportsInvisibleStatus": false,
+        "chatWithNonBuddies": true,
+        "readOnlyData": false,
+        "implementation": "palm://com.wosa.imessage.service/",
+        "onCreate": "palm://com.wosa.imessage.service/onCreate",
+        "onEnabled": "palm://com.wosa.imessage.service/onEnabled",
+        "onDelete": "palm://com.wosa.imessage.service/onDelete",
+        "onCapabilitiesChanged" : "palm://com.wosa.imessage.service/onCapabilitiesChanged",       
+        "onCredentialsChanged" : "palm://com.wosa.imessage.service/onCredentialsChanged", 
+        "sync": "palm://com.wosa.imessage.service/sync",
+        "sendIM": "palm://com.wosa.imessage.service/sendIM",
+        "dbkinds": {
+            "immessage": "com.wosa.imessage.immessage:1",
+            "chatthread": "com.wosa.imessage.chatthread:1",
+            "configuration": "com.wosa.imessage.configuration:1"
+        }
+    }]
+}

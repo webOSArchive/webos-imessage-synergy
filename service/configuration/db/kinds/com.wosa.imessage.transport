@@ -1,0 +1,14 @@
+{
+    "id": "com.wosa.imessage.transport:1",
+    "owner": "com.wosa.imessage.service",
+    "indexes": [
+        { 
+            "name": "lastSync", 
+            "props": [{ "name": "lastSync"}]
+        },
+        { 
+            "name": "messageBridgeServer", 
+            "props": [{ "name": "bridgeServer"}]
+        }
+    ]
+}

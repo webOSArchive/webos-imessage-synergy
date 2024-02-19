@@ -1,0 +1,55 @@
+{
+   "id":"com.wosa.imessage.service",
+   "description":"iMessage Client Service",
+   "engine":"node",
+   "activityTimeout":60,
+   "services":[
+      {
+         "name":"com.wosa.imessage.service",
+         "description":"iMessage Bridge",
+         "globalized":false,
+         "commands":[
+            {
+               "name":"checkCredentials",
+               "assistant":"checkCredentialsAssistant",
+               "public":true
+            },
+            {
+               "name":"onCapabilitiesChanged",
+               "assistant":"onCapabilitiesChangedAssistant",
+               "public":true
+            },  
+            {
+               "name":"onCredentialsChanged",
+               "assistant":"onCredentialsChangedAssistant",
+               "public":true
+            },    
+            {
+               "name":"onCreate",
+               "assistant":"onCreateAssistant",
+               "public":true
+            },    
+            {
+               "name":"onEnabled",
+               "assistant":"onEnabledAssistant",
+               "public":true
+            },
+            {
+               "name":"sync",
+               "assistant":"syncAssistant",
+               "public":true
+            },
+            {
+               "name":"onDelete",
+               "assistant":"onDeleteAssistant",
+               "public":true
+            },
+            { 
+               "name": "sendIM", 
+               "assistant": "sendIM", 
+               "public": true 
+            }
+         ]
+      }
+   ]
+}

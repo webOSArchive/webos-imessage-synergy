@@ -1,0 +1,14 @@
+{
+    "id": "com.wosa.imessage",
+    "version": "0.0.1",
+    "vendor": "webOS Archive",
+    "type": "web",
+    "main": "index.html",
+    "title": "iMessage Bridge",
+    "icon": "icon.png",
+    "splashicon": "icon-256.png",
+    "uiRevision": "2",
+    "copyright": "Copyright 2024, webOS Archive",
+    "ossRepo": "https://github.com/webosarchive/webos-imessage"
+
+}
