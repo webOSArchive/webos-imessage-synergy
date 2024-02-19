@@ -40,6 +40,11 @@
                "public":true
             },
             {
+               "name":"periodicSync",
+               "assistant":"periodicSync",
+               "public":true
+            },
+            {
                "name":"onDelete",
                "assistant":"onDeleteAssistant",
                "public":true

@@ -45,11 +45,13 @@ enyo.kind({
 					{ name: "imessagePort", kind: "Input", value: this.defaultPort, pack: "center", align: "start", lazy: false, onchange: "checkPort" },
 				]
 			},
-			{name:"txtNote", className: "footnote-text", style:"margin-top: 8px",  content:"<b>Note:</b> this service bypasses webOS proxy settings. Temporarily disable your proxy during this setup."},
+			{name:"txtNote", className: "footnote-text", style:"margin-top: 8px", content:"<b>Note:</b> The sync service bypasses webOS proxy settings. Temporarily disable your proxy during this setup."},
 			{kind: "Button", name:"btnSaveConfig", caption:$L("Save"),  onclick:"trySaveSettings"},
-			{name:"txtAccountInfo", className: "footnote-text", style:"margin-top: 20px",  content:"Complete the setup by creating an iMessage Bridge account in webOS Accounts.<br>If you've configured your Message Bridge server with Basic Auth, you'll need to specify those credentials in the account settings. If you do not have auth enabled for your Message Bridge server (which is the default), use your name and any password in the Account settings."},
+			{name:"txtAccountInfo", className: "footnote-text", style:"margin-top: 20px", content:"Complete the setup by creating an iMessage Bridge account in webOS Accounts."},
 			{kind: "Button", name:"btnConfigAccount", caption:$L("Accounts"), onclick:"launchAccounts"},
-			{kind: "Button", name:"btnSyncNow", caption:$L("Sync Now"), onclick:"doSyncNow", disabled: true},
+			{name:"txtSyncInfo", kind: "HtmlContent", className: "footnote-text", style:"margin-top: 20px", content:"Synchronization is usually automatic, every 3 minutes. If there are issues, or if you've just set the server, manually start the sync here."},
+			{kind: "Button", name:"btnSyncNow", caption:$L("Sync Now"), onclick:"doSyncNow", content:"", disabled: true},
+			{name:"txtSyncStatus", kind: "HtmlContent", className: "footnote-text", style:"margin-top: 8px"},
 		]},
 		{
             kind: "Helpers.Updater", //Make sure the Updater Helper is included in your depends.json
@@ -80,7 +82,6 @@ enyo.kind({
 		this.applySettings();
 
 		this.$.myUpdater.CheckForUpdate("iMessage Bridge");
-		this.getSyncReadiness();
 	},
 
 	handleActivate: function () {
@@ -147,8 +148,9 @@ enyo.kind({
 			this.log("DB8 had sync record");
 			this.dbConfigId = result._id;
 			if (result.lastSync && result.messageBridgeServer && this.$.imessageServer.getValue().length > 3) {
-				enyo.windows.addBannerMessage("Sync ready!", "{}");
 				this.$.btnSyncNow.setDisabled(false);
+				var localDate = new Date(result.lastSync.replace("Z", ""));
+				this.$.txtSyncStatus.setContent("Last sync attempt: " + this.calcSyncDateTime(localDate));
 			}
 		}
 	},
@@ -204,9 +206,14 @@ enyo.kind({
 	},
 	syncSuccess: function(inSender, inResponse) {
 		enyo.windows.addBannerMessage("Recurring background sync started!", "{}");
+		window.setTimeout(function () {
+			this.getSyncReadiness();
+		}.bind(this), 2000);
 	},
 	syncFailure: function(inSender, inResponse) {
+		enyo.windows.addBannerMessage("Sync failure!", "{}");
 		enyo.log("Background sync failure: " + enyo.json.stringify(inResponse));
+		this.getSyncReadiness();
 	},
 
 	resetToDefaults: function(inSender) {
@@ -222,4 +229,18 @@ enyo.kind({
 		this.$.imessageServer.setValue(Prefs.getCookie("server", this.defaultServer));
 		this.$.imessagePort.setValue(Prefs.getCookie("port", this.defaultPort));
 	},
+	calcSyncDateTime: function(syncDate)
+	{
+		var d = syncDate;
+		var hour = d.getHours();
+		var minutes = d.getMinutes();
+		var seconds = d.getSeconds();
+
+		if (seconds < 10) seconds = "0"+seconds;
+		if (minutes < 10) minutes = "0"+minutes;
+		if (hour < 10)  hour= "0"+hour;
+
+		var syncDateTime = d.getFullYear() + "-" + (d.getMonth() + 1) + "-" + d.getDate() +" "+hour+":"+minutes+":"+seconds+""; 
+		return(syncDateTime);
+	}
 });

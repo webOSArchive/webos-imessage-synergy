@@ -104,6 +104,7 @@ syncAssistant.prototype.run = function(future) {
    var username = "";
    var password = "";
    var syncURL = "";
+   var syncInterval = "3m";
    var transportConfigId;
    var storedChatThreads = [];
    var storedMessages = [];
@@ -138,7 +139,8 @@ syncAssistant.prototype.run = function(future) {
          // Find server info
          if (future.result.results && Array.isArray(future.result.results) && future.result.results.length > 0 && future.result.results[0].messageBridgeServer && future.result.results[0].messageBridgeServer != "") {
             syncURL = future.result.results[0].messageBridgeServer;
-
+            if (future.result.results[0].syncInterval)
+               syncInterval = future.result.results[0].syncInterval;
             //Next (in the "future") we'll retrieve our saved username
             return PalmCall.call("palm://com.palm.keymanager/", "fetchKey", {"keyname" : "AcctUsername"});
          } else {
@@ -411,7 +413,7 @@ syncAssistant.prototype.run = function(future) {
                         },
                         "schedule": {
                            "precise": true,
-                           "interval": "1m"
+                           "interval": syncInterval
                         },
                         "callback": {
                            "method": "palm://com.wosa.imessage.service/periodicSync",
@@ -421,7 +423,7 @@ syncAssistant.prototype.run = function(future) {
                   };
                   // for some reason, the activity no longer exists by the time we get here, so instead of
                   // completing it, we re-create it. i guess.
-                  logNoticeably("sync interval complete completed, restarting sync interval every 1m");
+                  logNoticeably("sync interval complete completed, restarting sync interval every " + syncInterval);
                   PalmCall.call("palm://com.palm.activitymanager/", "create", syncActivity).then(function(f) {
                      logNoticeably("activity create results=", JSON.stringify(f.result));
                      f.result = { returnValue: true };
@@ -440,6 +442,17 @@ syncAssistant.prototype.run = function(future) {
    });
    future.result = future.result;
 };
+
+
+var periodicSync = function(future){}
+periodicSync.prototype.run = function(future) {
+   logNoticeably("periodicSync run");
+   PalmCall.call("palm://com.wosa.imessage.service/", "sync", {timedSync: true});
+   future.result = { returnValue: true };
+};
+periodicSync.prototype.complete = function() {
+   logNoticeably("periodicSync complete!");
+}
 
 var onDeleteAssistant = function(future){};
 onDeleteAssistant.prototype.run = function(future) { 

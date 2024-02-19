@@ -17,12 +17,12 @@ function calcSyncDateTime()
     if (seconds < 10) seconds = "0"+seconds;
     if (hour < 10)  hour= "0"+hour;
 
-    var syncDateTime = d.getFullYear() + "-" + (d.getMonth() + 1) + "-" + d.getDate() +"T"+hour+":"+d.getMinutes()+":"+seconds+"Z"; 
+    var syncDateTime = d.getFullYear() + "-" + (d.getMonth() + 1) + "-" + d.getDate() +"T"+hour+":"+d.getMinutes()+":"+seconds; 
     return(syncDateTime);
 }
 
 function logNoticeably(message) {
-    console.log("!#######* iMessageBridge ##*: " + message + "\n");
+    console.log("!#######* " + message + "\n");
 }
 
 var Base64 = {
