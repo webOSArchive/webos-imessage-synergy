@@ -1,0 +1,44 @@
+{
+    "_kind": "com.wosa.imessage.immessage:1",
+    "_sync": true,
+    "flags": {
+        "visible": true
+    },
+    "folder": "outbox",
+    "localTimestamp": 1530497493511,
+    "messageText": "Luna send test 1 - no convo",
+    "serviceName": "type_iMessage",
+    "status": "successful",
+    "to": [
+        {
+            "addr": "8166686111",
+            "name": "Matt WilliamsST"
+        }
+    ]
+},
+{
+    "_kind": "com.wosa.imessage.immessage:1",
+    "_sync": true,
+    "flags": {
+        "visible": true
+    },
+    "folder": "inbox",
+    "localTimestamp": 1707599949529,
+    "messageText": "Luna in test 2",
+    "serviceName": "type_iMessage",
+    "status": "successful",
+    "replyAddress": "555-1234",
+    "displayName": "The Tester!",
+    "from": [
+        {
+            "addr": "5551234",
+            "name": "Jon Tester"
+        }
+    ],
+    "to": [
+        {
+            "addr": "5551234",
+            "name": "Jon Tester"
+        }
+    ]
+}

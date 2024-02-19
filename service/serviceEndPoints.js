@@ -443,7 +443,6 @@ syncAssistant.prototype.run = function(future) {
    future.result = future.result;
 };
 
-
 var periodicSync = function(future){}
 periodicSync.prototype.run = function(future) {
    logNoticeably("periodicSync run");
@@ -461,39 +460,58 @@ onDeleteAssistant.prototype.run = function(future) {
    logNoticeably("onDelete args =" + JSON.stringify(args));
    future.result = {returnValue: true};
    var args = this.controller.args;
-   var q ={ "query":{ "from":"com.wosa.imessage.immessage:1", "where":[{"prop":"accountId","op":"=","val":args.accountId}] }};
-   PalmCall.call("palm://com.palm.db/", "del", q).then( function(f) 
+
+   //Cancel activity (fire and forget)
+   PalmCall.call("palm://com.palm.activitymanager/", "cancel", { "activityName":"iMessagePeriodicSync" });
+
+   //Clean up transport, then..
+   var q = {"query":{"from":"com.wosa.imessage.transport:1"}};
+   var f = PalmCall.call("palm://com.palm.db/", "del", q).then(function(future) 
    {
-      if (f.result.returnValue !== true)
-      {
-         logNoticeably("an error occured cleaning up messages");
-      }
-      //Delete our housekeeping/sync data
-      var q2 = {"query":{"from":"com.wosa.imessage.transport:1"}};
-      PalmCall.call("palm://com.palm.db/", "del", q2).then( function(f1) 
-      {
-         if (f1.result.returnValue !== true)
-         {
-            logNoticeably("an error occured cleaning up iMessage Bridge sync info");
-         }
-         //Delete our account username/password from key store
-         PalmCall.call("palm://com.palm.keymanager/", "remove", {"keyname" : "AcctUsername"}).then( function(f2) 
-         {
-            if (f2.result.returnValue !== true)
-            {
-               logNoticeably("an error occured removing iMessage Username");
-            }
-            PalmCall.call("palm://com.palm.keymanager/", "remove", {"keyname" : "AcctPassword"}).then( function(f3) 
-            {
-               if (f2.result.returnValue !== true)
-               {
-                  logNoticeably("an error occured removing iMessage Password");
-               }
-            });
-         });
-      });
+      if (future.result.returnValue !== true)
+         logNoticeably("an error occured cleaning up iMessage Bridge sync info");
+      else
+         logNoticeably("deleted iMessage Bridge sync info");
+      q ={ "query":{ "from":"com.wosa.imessage.immessage:1" }};
+      return PalmCall.call("palm://com.palm.db/", "del", q);
    });
-   future.result = {returnValue: true};
+
+   //Clean up messages, then...
+   f.then(this, function (future) {
+      if (future.result.returnValue !== true)
+         logNoticeably("an error occured cleaning up messages");
+      else
+         logNoticeably("cleaned up messages");
+      q ={ "query":{ "from":"com.wosa.imessage.chatthread:1" }};
+      return PalmCall.call("palm://com.palm.db/", "del", q);
+   });
+
+   //Clean up chat threads, then...
+   f.then(this, function (future) {
+      if (future.result.returnValue !== true)
+         logNoticeably("an error occured cleaning up chat threads");
+      else
+         logNoticeably("cleaned up chat threads");
+      return PalmCall.call("palm://com.palm.keymanager/", "remove", {"keyname" : "AcctUsername"});
+   });
+
+   //Clean up username, then...
+   f.then(this, function (future) {
+      if (future.result.returnValue !== true)
+         logNoticeably("an error occured removing iMessage Username");
+      else
+         logNoticeably("removed iMessage Username");
+      return PalmCall.call("palm://com.palm.keymanager/", "remove", {"keyname" : "AcctPassword"}); 
+   });
+
+   //Clean up password, then...
+   f.then(this, function (future) {
+      if (future.result.returnValue !== true)
+         logNoticeably("an error occured removing iMessage Password");
+      else
+         logNoticeably("removed iMessage Password");
+      future.result = {returnValue: true};
+   });
 };
 
 //TODO...
