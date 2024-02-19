@@ -358,18 +358,21 @@ syncAssistant.prototype.run = function(future) {
                                     }
                                  }
                                  var msgTS = Date.parse(thisDispatch.received);
+                                 var useFolder = "inbox";
+                                 if (thisDispatch.isMe)
+                                    useFolder = "outbox";
                                  var dbMsg = {
                                     _kind:"com.wosa.imessage.immessage:1",
                                     _sync:true,
                                     flags:{visible:true},
-                                    folder: "inbox",
+                                    folder: useFolder,
                                     conversations: [useChat._id],
                                     localTimestamp: msgTS,
                                     messageText: thisDispatch.body,
                                     serviceName: "iMessage",
                                     status: "successful",
-                                    from: { addr:thisChat.replyAddress },
-                                    to: { addr: username, name: username },
+                                    from: [{ addr:thisChat.replyAddress }],
+                                    to: [{ addr: username, name: username }],
                                     username: username,
                                     iMessageId: thisDispatch.chatId,
                                     iDispatchId: thisDispatch.id,
@@ -382,7 +385,7 @@ syncAssistant.prototype.run = function(future) {
 
                               } else {
                                  //TODO: Update existing messages
-                                 //    check if most recent message isme: is true (outbox) or false (inbox)
+                                 //    check if most recent message isMe: is true (outbox) or false (inbox)
                                  logNoticeably("incoming dispatch with id " + thisDispatch.id + " is already stored");
                               }
                            }
