@@ -224,70 +224,21 @@ syncAssistant.prototype.run = function(future) {
          if (!error && response.statusCode == 200) {
             logNoticeably("requests body: " + body);
             var imsgThreads = JSON.parse(body);
+
+            //Create any chat threads we didn't already know about
             logNoticeably("existing chatthreads: " + JSON.stringify(storedChatThreads));
-            if (storedChatThreads.length > 0) {
-               // For each stored chat thread, look for messages that update them (ignore messages with no chat)
-               for (var j=0;j<storedChatThreads.length;j++) {
-                  var thisChat = storedChatThreads[j];
-                  logNoticeably("looking for new messages for chatthread: " + thisChat.iMessageId);
-                  for (var i=0;i<imsgThreads.length;i++) {
-                     var thisThread = imsgThreads[i];
-                     //TODO: the iMessage ID is really the iMessage thread ID, we also need to store the individual message id
-                     if (thisChat.iMessageId && thisThread.id == thisChat.iMessageId) {
-                        logNoticeably("found an existing thread for imessage id: " + thisChat.iMessageId + ", checking if message already exists...");
-                        var foundInitialMessage = false;
-                        for (var m=0;m<storedMessages.length;m++) {
-                           var thisStoredMsg = storedMessages[m];
-                           if (thisStoredMsg.iMessageId == thisChat.iMessageId && thisStoredMsg.iDispatchId == thisThread.lastMessageId)
-                              foundInitialMessage = true;
-                        }
-                        if (!foundInitialMessage) {
-                           logNoticeably("no message exists for thread with imessage id: " + thisChat.iMessageId + ", creating one");
-                           createdInitialMessage = true;
-                           var msgTS = Date.parse(thisThread.lastReceived);
-                           var dbMsg = {
-                              _kind:"com.wosa.imessage.immessage:1",
-                              _sync:true,
-                              flags:{read:true},
-                              folder: "inbox",
-                              conversations: [thisChat._id],
-                              localTimestamp: msgTS,
-                              messageText: thisThread.lastMessage,
-                              serviceName: "iMessage",
-                              status: "successful",
-                              from: [{ addr:thisThread.replyId, name: thisThread.name }],
-                              to: { addr: username, name: username },
-                              username: username,
-                              iMessageId: thisThread.id,
-                              iDispatchId: thisThread.lastMessageId,
-                           }
-                           logNoticeably("new initial message for existing thread with id: " + thisChat._id + " is: " + JSON.stringify(dbMsg));
-                           //This is a fire and forget future call...
-                           DB.put([dbMsg]).then(function(f3) {
-                              logNoticeably("DB put result: " + JSON.stringify(f3.result));
-                           });
-                        } else {
-                           logNoticeably("messages already exist for thread with imessage id: " + thisChat.iMessageId + ", NOT creating new initial message");
-                        }
-                     }
-                  }
-               }
-            }
-            // When done processing existing chat threads, create new chat threads where needed
-            logNoticeably("checking if new chats need to be created!");
             for (var i=0;i<imsgThreads.length;i++) {
-               //Check if each chat thread's initial message already exists in the database
+
                var thisThread = imsgThreads[i];
-               var found = false;
-               for (var j=0;j<storedChatThreads.length;j++) {
-                  var thisChat = storedChatThreads[j];
-                  if (thisChat.iMessageId == thisThread.id) {
-                     found = true;
+               var foundStoredChat = false;
+               for (var c=0;c<storedChatThreads.length;c++) {
+                  var thisChat = storedChatThreads[c];
+                  if (thisChat.iMessageId && thisThread.id == thisChat.iMessageId) {
+                     foundStoredChat = true;
                      break;
                   }
                }
-               if (!found) {
-                  //If the incoming initial chat thread message does not exist, create it
+               if (!foundStoredChat) {
                   logNoticeably("the remote thread with id " + thisThread.id + " did not exist locally, creating...");
                   createdChatThread = true;
                   var msgTS = Date.parse(thisThread.lastReceived);
@@ -309,132 +260,125 @@ syncAssistant.prototype.run = function(future) {
                   DB.put([dbThread]).then(function(chatput) {
                      logNoticeably("put chat thread for iMessage id: " + thisThread.id + " with initial message: " + JSON.stringify(dbThread));
                   });
-               } else {
-                  logNoticeably("the remote thread with id " + thisThread.id + " already existed locally, skipping!");
                }
             }
-            // If chat threads were created, order another sync
             if (createdChatThread) {
                PalmCall.call("palm://com.wosa.imessage.service/", "sync", {}).then(function(syncResult) {
-                  logNoticeably("a follow-up sync has been scheduled to populate initial messages!");
+                  logNoticeably("a follow-up sync has been ordered to populate initial messages!");
                });
             } else {
-               if (createdInitialMessage) {
-                  PalmCall.call("palm://com.wosa.imessage.service/", "sync", {}).then(function(syncResult) {
-                     logNoticeably("a follow-up sync has been scheduled to populate historical messages!");
-                  });
-               } else {
-                  //Next get historical messages for all populated threads
-                  for (var c=0;c<storedChatThreads.length;c++) {
-                     var thisChat = storedChatThreads[c];
-                     logNoticeably("GO GET history for chatthread id: " + thisChat.iMessageId);
-                     var historyURL = syncURL + "/" + thisChat.iMessageId + "/messages";
-                     logNoticeably("GO GET history with URL: " + historyURL);
-                     request(historyURL, function (error, response, body) {
-                        logNoticeably("in message history requests call! ");
-                        if (!error && response.statusCode == 200) {
-                           logNoticeably("got message history response, checking if messages need to be created! ");
-                           var imsgDispatches = JSON.parse(body);
-                           for (var d=0;d<imsgDispatches.length;d++) {
-                              var thisDispatch=imsgDispatches[d];
-                              logNoticeably("checking if message exists in db: " + JSON.stringify(thisDispatch));
-                              var foundStoredDispatch = false;
-                              for (var s=0;s<storedMessages.length;s++) {
-                                 var thisStoredMsg = storedMessages[s];
-                                 if (thisStoredMsg.iDispatchId == thisDispatch.id) {
-                                    foundStoredDispatch = true;
-                                    break;
-                                 }
-                              }
-                              if (!foundStoredDispatch) {
-                                 logNoticeably("incoming dispatch with id " + thisDispatch.id + " needs to be created...");
-                                 var useChat;
-                                 for (var t=0;t<storedChatThreads.length;t++) {
-                                    var thisChat = storedChatThreads[t];
-                                    if (thisChat.iMessageId == thisDispatch.chatId) {
-                                       useChat = thisChat;
-                                       logNoticeably("incoming dispatch with id " + thisDispatch.id + " belongs to conversation: " + useChat._id);
-                                       break;
-                                    }
-                                 }
-                                 var msgTS = Date.parse(thisDispatch.received);
-                                 var useFolder = "inbox";
-                                 if (thisDispatch.isMe)
-                                    useFolder = "outbox";
-                                 var dbMsg = {
-                                    _kind:"com.wosa.imessage.immessage:1",
-                                    _sync:true,
-                                    flags:{read:false},
-                                    folder: useFolder,
-                                    conversations: [useChat._id],
-                                    localTimestamp: msgTS,
-                                    messageText: thisDispatch.body,
-                                    serviceName: "iMessage",
-                                    status: "successful",
-                                    from: [{ addr:thisChat.replyAddress }],
-                                    to: [{ addr: username, name: username }],
-                                    username: username,
-                                    iMessageId: thisDispatch.chatId,
-                                    iDispatchId: thisDispatch.id,
-                                 }
-                                 logNoticeably("made message dispatch with id " + thisDispatch.id + ": " + JSON.stringify(dbMsg));
-                                 //This is a fire and forget future call...
-                                 DB.put([dbMsg]).then(function(chatput) {
-                                    logNoticeably("put new dispatch for iMessage id: " + thisThread.id);
-                                 });
-
-                              } else {
-                                 //TODO: Update existing messages
-                                 //    check if most recent message isMe: is true (outbox) or false (inbox)
-                                 logNoticeably("incoming dispatch with id " + thisDispatch.id + " is already stored");
+               logNoticeably("ALL DONE SYNCING!");
+               logNoticeably("Scheduling next syncs...");
+               syncActivity = 
+               {
+                  "start": true,
+                  "replace": true,
+                  "activity": {
+                     "name": "iMessagePeriodicSync",
+                     "description": "Recreate Periodic Sync of incoming messages from iMessage",
+                     "type": {
+                        "background": true,
+                        "power": true,
+                        "powerDebounce": true,
+                        "explicit": true,
+                        "persist": true
+                     },
+                     "requirements": {
+                        "internet": true
+                     },
+                     "schedule": {
+                        "precise": true,
+                        "interval": syncInterval
+                     },
+                     "callback": {
+                        "method": "palm://com.wosa.imessage.service/periodicSync",
+                        "params": {timedSync: true}
+                     }
+                  }
+               };
+               // for some reason, the activity no longer exists by the time we get here, so instead of
+               // completing it, we re-create it. i guess.
+               logNoticeably("sync interval complete completed, restarting sync interval every " + syncInterval);
+               PalmCall.call("palm://com.palm.activitymanager/", "create", syncActivity).then(function(f) {
+                  logNoticeably("activity create results=", JSON.stringify(f.result));
+                  f.result = { returnValue: true };
+               }, function(f) {
+                  logNoticeably("Something bad happened scheduling recurring sync. This is probably fatal!");
+                  // TODO: trigger the app to display an error to the user ?
+               });
+            }
+            //Next get historical messages for all stored threads
+            for (var c=0;c<storedChatThreads.length;c++) {
+               var thisChat = storedChatThreads[c];
+               logNoticeably("GO GET history for chatthread id: " + thisChat.iMessageId);
+               var historyURL = syncURL + "/" + thisChat.iMessageId + "/messages";
+               logNoticeably("GO GET history with URL: " + historyURL);
+               request(historyURL, function (error, response, body) {
+                  logNoticeably("in message history requests call! ");
+                  if (!error && response.statusCode == 200) {
+                     logNoticeably("got message history response, checking if messages need to be created! ");
+                     var imsgDispatches = JSON.parse(body);
+                     for (var d=0;d<imsgDispatches.length;d++) {
+                        var thisDispatch=imsgDispatches[d];
+                        logNoticeably("checking if message exists in db: " + JSON.stringify(thisDispatch));
+                        var foundStoredDispatch = false;
+                        for (var s=0;s<storedMessages.length;s++) {
+                           var thisStoredMsg = storedMessages[s];
+                           if (thisStoredMsg.iDispatchId == thisDispatch.id) {
+                              foundStoredDispatch = true;
+                              break;
+                           }
+                        }
+                        if (!foundStoredDispatch) {
+                           logNoticeably("incoming dispatch with id " + thisDispatch.id + " needs to be created...");
+                           var useChat;
+                           for (var t=0;t<storedChatThreads.length;t++) {
+                              var thisChat = storedChatThreads[t];
+                              if (thisChat.iMessageId == thisDispatch.chatId) {
+                                 useChat = thisChat;
+                                 logNoticeably("incoming dispatch with id " + thisDispatch.id + " belongs to conversation: " + useChat._id);
+                                 break;
                               }
                            }
+                           var msgTS = Date.parse(thisDispatch.received);
+                           var useFolder = "inbox";
+                           var useFlags = {read:false}
+                           if (thisDispatch.isMe) {
+                              useFolder = "outbox";
+                              useFlags = {read:true}
+                           }
+                              
+                           var dbMsg = {
+                              _kind:"com.wosa.imessage.immessage:1",
+                              _sync:true,
+                              flags: useFlags,
+                              folder: useFolder,
+                              conversations: [useChat._id],
+                              localTimestamp: msgTS,
+                              messageText: thisDispatch.body,
+                              serviceName: "iMessage",
+                              status: "successful",
+                              from: [{ addr:thisChat.replyAddress }],
+                              to: [{ addr: username, name: username }],
+                              username: username,
+                              iMessageId: thisDispatch.chatId,
+                              iDispatchId: thisDispatch.id,
+                           }
+                           logNoticeably("made message dispatch with id " + thisDispatch.id + ": " + JSON.stringify(dbMsg));
+                           //This is a fire and forget future call...
+                           DB.put([dbMsg]).then(function(chatput) {
+                              logNoticeably("put new dispatch for iMessage id: " + thisThread.id);
+                           });
+                           //TODO: The chat thread summary needs to be updated too!
                         } else {
-                           logNoticeably("message history requests error: " + error) // Print the response body
-                           future.result = {returnValue: false};
-                        }
-                     });
-                  }
-                  logNoticeably("ALL DONE SYNCING!");
-                  logNoticeably("Scheduling next syncs...");
-                  syncActivity = 
-                  {
-                     "start": true,
-                     "replace": true,
-                     "activity": {
-                        "name": "iMessagePeriodicSync",
-                        "description": "Recreate Periodic Sync of incoming messages from iMessage",
-                        "type": {
-                           "background": true,
-                           "power": true,
-                           "powerDebounce": true,
-                           "explicit": true,
-                           "persist": true
-                        },
-                        "requirements": {
-                           "internet": true
-                        },
-                        "schedule": {
-                           "precise": true,
-                           "interval": syncInterval
-                        },
-                        "callback": {
-                           "method": "palm://com.wosa.imessage.service/periodicSync",
-                           "params": {timedSync: true}
+                           logNoticeably("incoming dispatch with id " + thisDispatch.id + " is already stored");
                         }
                      }
-                  };
-                  // for some reason, the activity no longer exists by the time we get here, so instead of
-                  // completing it, we re-create it. i guess.
-                  logNoticeably("sync interval complete completed, restarting sync interval every " + syncInterval);
-                  PalmCall.call("palm://com.palm.activitymanager/", "create", syncActivity).then(function(f) {
-                     logNoticeably("activity create results=", JSON.stringify(f.result));
-                     f.result = { returnValue: true };
-                  }, function(f) {
-                     logNoticeably("Something bad happened scheduling recurring sync. This is probably fatal!");
-                     // TODO: trigger the app to display an error to the user ?
-                  });
-               }
+                  } else {
+                     logNoticeably("message history requests error: " + error) // Print the response body
+                     future.result = {returnValue: false};
+                  }
+               });
             }
          } else {
             logNoticeably("chat requests error: " + error) // Show the response body
@@ -443,7 +387,6 @@ syncAssistant.prototype.run = function(future) {
       });
       future.result = {returnValue: true};
    });
-   future.result = future.result;
 };
 
 var periodicSync = function(future){}
