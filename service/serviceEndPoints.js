@@ -248,7 +248,7 @@ syncAssistant.prototype.run = function(future) {
                            var dbMsg = {
                               _kind:"com.wosa.imessage.immessage:1",
                               _sync:true,
-                              flags:{visible:true},
+                              flags:{read:true},
                               folder: "inbox",
                               conversations: [thisChat._id],
                               localTimestamp: msgTS,
@@ -295,7 +295,7 @@ syncAssistant.prototype.run = function(future) {
                   replyAddincomingress = replyAddress[replyAddress.length-1];
                   var dbThread = {
                      _kind: "com.wosa.imessage.chatthread:1",
-                     flags:{outgoing:false, visible:true},
+                     flags:{visible:true},
                      normalizedAddress: username,
                      displayName: thisThread.name,
                      replyAddress: replyAddress,
@@ -364,7 +364,7 @@ syncAssistant.prototype.run = function(future) {
                                  var dbMsg = {
                                     _kind:"com.wosa.imessage.immessage:1",
                                     _sync:true,
-                                    flags:{visible:true},
+                                    flags:{read:false},
                                     folder: useFolder,
                                     conversations: [useChat._id],
                                     localTimestamp: msgTS,
