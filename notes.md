@@ -27,7 +27,7 @@ futuristicFunction(futuristicCallback {
 - Data is stored in DB8 and you can put or get with JSON queries like: `var q ={ "query":{ "from":"com.wosa.imessage.immessage:1", "where":[{"prop":"accountId","op":"=","val":args.accountId}] }};`
 - You can interact with DB8 using Palm calls and Futures like: `PalmCall.call("palm://com.palm.db/", "get", q).then( function(futureResult) {});`
 - But Foundations includes an abstraction library called DB that makes things a little easier: `DB.find(q, false, false).then(function(futureResult) {});`
-- If you use DB. your queries should *not* be wrapped in "query:{}" -- you just need the contents of the query.
+- If you use the DB library your queries should *not* be wrapped in "query:{}" -- you just need the contents of the query.
 - Use Impostah (in Preware) to inspect DB records
 
 ## Adding Messages
@@ -58,6 +58,9 @@ Thanks to grabber for the sample luna commands
 ```
 luna-send -n 1 -a com.wosa.imessage.service palm://com.wosa.imessage.service/sync '{}'
 ```
+
+### ActivityManager
+This webOS service is used to schedule background (low priority) or foreground (high priority) tasks, like syncing from a webservice. I was unsuccessful in setting it up per the SDK documentation, but code from EricBlade worked. You define the task using JSON, then schedule it with a Palm service call. See the serviceEndPoints.js code and comments for details.
 
 ## Code Samples
 ### Make a chat message without an existing thread

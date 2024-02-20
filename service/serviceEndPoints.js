@@ -104,6 +104,7 @@ syncAssistant.prototype.run = function(future) {
    var username = "";
    var password = "";
    var syncURL = "";
+   var historyLimit = 15;
    var syncInterval = "3m";
    var transportConfigId;
    var storedChatThreads = [];
@@ -217,7 +218,7 @@ syncAssistant.prototype.run = function(future) {
       logNoticeably("making chat requests call! ");
       // Get all remote conversations from server
       // TODO: Modify the querystring to get more than just 5 of everything!
-      request(syncURL, function (error, response, body) {
+      request(syncURL + "?limit=" + historyLimit, function (error, response, body) {
          logNoticeably("in chat requests call! ");
          var createdChatThread = false;
          var createdInitialMessage = false;
@@ -311,7 +312,7 @@ syncAssistant.prototype.run = function(future) {
             for (var c=0;c<storedChatThreads.length;c++) {
                var thisChat = storedChatThreads[c];
                logNoticeably("GO GET history for chatthread id: " + thisChat.iMessageId);
-               var historyURL = syncURL + "/" + thisChat.iMessageId + "/messages";
+               var historyURL = syncURL + "/" + thisChat.iMessageId + "/messages?limit=" + historyLimit;
                logNoticeably("GO GET history with URL: " + historyURL);
                request(historyURL, function (error, response, body) {
                   logNoticeably("in message history requests call! ");
@@ -365,11 +366,23 @@ syncAssistant.prototype.run = function(future) {
                               iDispatchId: thisDispatch.id,
                            }
                            logNoticeably("made message dispatch with id " + thisDispatch.id + ": " + JSON.stringify(dbMsg));
-                           //This is a fire and forget future call...
-                           DB.put([dbMsg]).then(function(chatput) {
-                              logNoticeably("put new dispatch for iMessage id: " + thisThread.id);
+                           //Put the new message in the database
+                           DB.put([dbMsg]).then(function(msgput) {
+                              if (msgput.result.returnValue === true)
+                                 logNoticeably("put new dispatch for iMessage id: " + thisThread.id);
+                              else 
+                                 logNoticeably("FAILED to put new dispatch for iMessage id: " + thisThread.id);
                            });
-                           //TODO: The chat thread summary needs to be updated too!
+                           //Also update the chat thread summary with most recent message
+                           if (d == 0) {
+                              var mergeRec = {"_id":useChat._id, "summary":thisDispatch.body };
+                              DB.merge([mergeRec]).then(function(chatmerge) {
+                                 if (chatmerge.result.returnValue === true)
+                                    logNoticeably("merged new summary for iMessage id: " + thisThread.id);
+                                 else 
+                                    logNoticeably("failed to merge new summary for iMessage id: " + thisThread.id);
+                              });   
+                           }
                         } else {
                            logNoticeably("incoming dispatch with id " + thisDispatch.id + " is already stored");
                         }
