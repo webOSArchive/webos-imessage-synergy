@@ -347,7 +347,7 @@ syncAssistant.prototype.run = function(future) {
                               useFolder = "outbox";
                               useFlags = {read:true}
                            }
-                              
+                           //TODO: The chat thread summary needs to be updated too!
                            var dbMsg = {
                               _kind:"com.wosa.imessage.immessage:1",
                               _sync:true,
