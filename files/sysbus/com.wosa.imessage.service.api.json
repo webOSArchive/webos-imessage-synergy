@@ -1,0 +1,14 @@
+{
+    "imessage-service.operation": [
+        "com.wosa.imessage.service/checkCredentials",
+        "com.wosa.imessage.service/onCapabilitiesChanged",
+        "com.wosa.imessage.service/onCredentialsChanged",
+        "com.wosa.imessage.service/onCreate",
+        "com.wosa.imessage.service/onEnabled",
+        "com.wosa.imessage.service/sync",
+        "com.wosa.imessage.service/periodicSync",
+        "com.wosa.imessage.service/onDelete",
+        "com.wosa.imessage.service/sendIM"
+    ]
+}
+

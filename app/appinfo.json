@@ -9,6 +9,7 @@
     "splashicon": "icon-256.png",
     "uiRevision": "2",
     "copyright": "Copyright 2024, webOS Archive",
-    "ossRepo": "https://github.com/webosarchive/webos-imessage"
-
+    "ossRepo": "https://github.com/webosarchive/webos-imessage",
+    "requiredPermissions": ["imessage-service.operation", "appmanager.management", "preferences.systempropertyquery"],
+    "trustLevel": "trusted"
 }

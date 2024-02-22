@@ -1,0 +1,14 @@
+{
+    "appId": "com.wosa.imessage.service",
+    "allowedNames": ["com.wosa.imessage.service"],
+    "trustLevel" : "oem",
+    "type": "privileged",
+    "permissions": [
+        {
+            "service":"com.wosa.imessage.service",
+            "inbound":["*"],
+            "outbound":["*"]
+        }
+    ]
+}
+
