@@ -5,14 +5,25 @@ Notes intended to augment the documentation found here: https://sdk.webosarchive
 ## Futures
 - webOS was built before async ES6, and even before promises. Palm had their own solution called futures.
 - They work like async -- the argument for a future-enabled function is the "call back" function that will be invoked with the async call is completed.
-- Thus futures can be nested within another futures callback...
+- Futures *can* be nested within another futures callback...
 ```
 futuristicFunction(futuristicCallback {
-    futuristicFunction2(futuristicCallBack2 {
-
+    f = futuristicFunction2(futuristicCallBack2 {
+        futuristicFunction2.result = {returnValue: true}
     });
+    futuristicFunction1.result = {f.result};
 });
 ```
+- *But* context is easily lost that way. A better approach is to chain futures, and pass in context...
+```
+f = futuristicFunction(this, future {
+    return futuristicFunction2;
+});
+f.then(this, future) {  // f is now futuristicFunction2
+    future.result = {returnValue: true};
+}
+```
+- A future is *resolved* when its result value is set. This effect is immediate and aborts the rest of the nesting or chain -- don't set the result value in your codepath until you're done processing!
 
 ## Kinds
 - Not to be confused with Enyo's kinds (which are usually user-oriented) DB8 will only store data of a pre-declared structure **kind**.
