@@ -9,6 +9,10 @@
         { 
             "name": "messageBridgeServer", 
             "props": [{ "name": "bridgeServer"}]
+        },
+        { 
+            "name": "messageBridgePort", 
+            "props": [{ "name": "bridgePort"}]
         }
     ]
 }

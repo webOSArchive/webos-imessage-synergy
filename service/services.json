@@ -35,6 +35,11 @@
                "public":true
             },
             {
+               "name":"httpRequest",
+               "assistant":"httpRequestAssistant",
+               "public":true
+            },
+            {
                "name":"sync",
                "assistant":"syncAssistant",
                "public":true

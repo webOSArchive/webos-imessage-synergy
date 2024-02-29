@@ -4,10 +4,10 @@ enyo.kind({
 	defaultServer: "",
 	defaultPort: 8080,
 	dbConfigId: null,
-	useUrl:null,
+	useServer:null,
+	usePort:null,
 
 	components:[
-		{kind: "WebService", name: "checkServerConnection", url: "", onSuccess: "serverCheckSuccess", onFailure: "serverCheckFailure" },
 		{kind: "DbService", dbKind: "enyo.bffs:1", onFailure: "dbFailure", components: [
             {name: "findBffs", method: "find", onSuccess: "findBffsSuccess"},
 			{name: "findForSaveBffs", method: "find", onSuccess: "findForSaveBffsSuccess"},
@@ -16,6 +16,7 @@ enyo.kind({
         ]},
 		{kind: "PalmService", name: "launchAppRequest", service: "palm://com.palm.applicationManager/", method: "open", onSuccess: "", onFailure: "" },
 		{kind: "PalmService", name: "serviceSyncRequest", service: "palm://com.wosa.imessage.service/", method: "sync", onSuccess: "syncSuccess", onFailure: "syncFailure" },
+		{kind: "PalmService", name: "checkServerConnection", service: "palm://com.wosa.imessage.service/", method: "httpRequest", onSuccess: "serverCheckSuccess", onFailure: "serverCheckFailure" },
 		{kind: "ApplicationEvents", onWindowActivated: "handleActivate", onWindowDeactivated: "handleDeactivate", onApplicationRelaunch: "handleLaunchParam"},
 
 		{ kind: "PageHeader", components: [
@@ -158,12 +159,18 @@ enyo.kind({
 		this.$.spinner.show();
 		this.saveSettings();
 		//Test connection
-		var useServer = this.$.imessageServer.getValue();
-		var usePort = this.$.imessagePort.getValue();
-		this.useUrl = "http://" + useServer + ":" + usePort + "/chats";
-		enyo.log("Testing server connection with URL: " + this.useUrl);
-		this.$.checkServerConnection.setUrl(this.useUrl);
-		this.$.checkServerConnection.call();
+		this.useServer = this.$.imessageServer.getValue();
+		this.usePort = this.$.imessagePort.getValue();
+		
+		var testQuery = {
+			host: this.useServer,
+			port: this.usePort,
+			path: "/chats?limit=1",
+			method: "GET",
+			binary: false
+		 }
+		 enyo.log("Testing server connection with URL: " + JSON.stringify(testQuery));
+		 this.$.checkServerConnection.call(testQuery);
 		var q = {"query":{"from":"com.wosa.imessage.transport:1"}};
         this.$.findForSaveBffs.call(q);
 	},
@@ -171,18 +178,19 @@ enyo.kind({
 		//Write settings to DB8 for service to use
 		if (!this.dbConfigId) {	//Create record if none existed
 			enyo.log("Creating DB config record");
-			var syncRec = [{ _kind: "com.wosa.imessage.transport:1", "messageBridgeServer":this.useUrl}];
+			var syncRec = [{ _kind: "com.wosa.imessage.transport:1", "messageBridgeServer":this.useServer, "messageBridgePort":this.usePort}];
 			this.$.putBffs.call({objects: syncRec});	
 		} else {	//Merge record if one already existed
 			enyo.log("Updating DB config record with ID: " + this.dbConfigId);
-			var syncRec = {"_id":this.dbConfigId, "messageBridgeServer":this.useUrl };
+			var syncRec = {"_id":this.dbConfigId, "messageBridgeServer":this.useServer, "messageBridgePort":this.usePort };
 			this.$.mergeBffs.call({"objects": [syncRec]});
 		}
 		this.getSyncReadiness();
 	},
 	serverCheckSuccess: function(inSender, inResponse, inRequest) {
 		this.$.spinner.hide();
-		if (!inResponse || inResponse == "" || !Array.isArray(inResponse)) {
+		enyo.log("IN SUCCESS: " + JSON.stringify(inResponse));
+		if (!inResponse || inResponse == "" || !inResponse.data || inResponse.data == "") {
 			this.serverCheckFailure();
 		} else {
 			enyo.log("Server response: " + JSON.stringify(inResponse));

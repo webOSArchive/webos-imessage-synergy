@@ -1,6 +1,6 @@
 {
     "id": "com.wosa.imessage",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "vendor": "webOS Archive",
     "type": "web",
     "main": "index.html",
