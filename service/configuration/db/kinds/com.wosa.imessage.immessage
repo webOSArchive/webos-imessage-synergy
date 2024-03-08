@@ -5,16 +5,16 @@
     "sync": true,
     "indexes": [
         {
-            "name": "iMessageId",
-            "props": [
-                { "name": "iMessageId" }
-            ]
-        },
-        {
             "name": "iDispatchId",
             "props": [
                 { "name": "iDispatchId" }
             ]
         },
+        {
+            "name": "iMessageId",
+            "props": [
+                { "name": "iMessageId" }
+            ]
+        }
     ]
 }

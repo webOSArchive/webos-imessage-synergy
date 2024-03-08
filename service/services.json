@@ -45,6 +45,11 @@
                "public":true
             },
             {
+               "name":"syncChat",
+               "assistant":"syncChatAssistant",
+               "public":true
+            },
+            {
                "name":"periodicSync",
                "assistant":"periodicSync",
                "public":true
