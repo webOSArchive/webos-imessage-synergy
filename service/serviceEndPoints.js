@@ -334,6 +334,8 @@ syncAssistant.prototype.run = function(future) {
 //This syncs message history from individual chat threads
 var syncChatAssistant = function(future){};
 syncChatAssistant.prototype.run = function(future) {
+   //TODO: This results in a commandTimeout and I don't know why. Maybe make subscribable?
+   // https://sdk.webosarchive.org/docs/dev-guide/js-services/services-faq.html
    var args = this.controller.args;
    if (!args || !args.conversationId || !args.iMessageId || !args.replyId) {
       future.result = {returnValue: false};
@@ -383,7 +385,7 @@ syncChatAssistant.prototype.run = function(future) {
       }
       else {
          logNoticeably("could not find account username in DB8\n");
-         future.result = {returnValue: false};
+         future.result = { returnValue: true };
       }
    });
 
@@ -506,9 +508,9 @@ syncChatAssistant.prototype.run = function(future) {
             }
          }
       }
-      future.result = {returnValue: true};
+      future.result = { returnValue: true };
    });
-   future.result = {returnValue: true};
+   future.result = { returnValue: true };
 }
 
 var periodicSync = function(future){}
