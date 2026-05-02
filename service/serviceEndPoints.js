@@ -210,7 +210,10 @@ syncAssistant.prototype.run = function(future) {
 
    //Retreive our saved chat threads from db8
    f.then(this, function(future) {
-      if (future.result.results.length > 0) {
+      if (!future.result.returnValue) {
+         return;
+      }
+      if (future.result.results && future.result.results.length > 0) {
          storedChatThreads = future.result.results;
       }
 
@@ -260,7 +263,7 @@ syncAssistant.prototype.run = function(future) {
                createdChatThread = true;
                var msgTS = Date.parse(thisThread.lastReceived);
                var replyAddress = thisThread.replyId.split(";-;");
-               replyAddincomingress = replyAddress[replyAddress.length-1];
+               var replyAddingress = replyAddress[replyAddress.length-1];
                var dbThread = {
                   _kind: "com.wosa.imessage.chatthread:1",
                   flags:{visible:true},
@@ -280,18 +283,15 @@ syncAssistant.prototype.run = function(future) {
                createdChatThread = true;
             }
          }
-         if (createdChatThread) {
-            PalmCall.call("palm://com.wosa.imessage.service/", "sync", {}).then(function(syncResult) {
-               logNoticeably("a follow-up sync has been ordered to populate initial messages!");
-               future.result = {returnValue: true};
-            });
-         }
+         // Don't recursively call sync here - new threads will be populated on the next periodic sync.
+         // A recursive call races against the fire-and-forget DB.put calls above: if puts haven't
+         // completed yet, the recursive sync won't see the new threads, creates them again, and loops.
       }
    });
 
    logNoticeably("ALL DONE SYNCING!");
    logNoticeably("Scheduling next syncs...");
-   syncActivity = 
+   var syncActivity =
    {
       "start": true,
       "replace": true,
@@ -339,6 +339,7 @@ syncChatAssistant.prototype.run = function(future) {
    var args = this.controller.args;
    if (!args || !args.conversationId || !args.iMessageId || !args.replyId) {
       future.result = {returnValue: false};
+      return;
    }
 
    logNoticeably("PERFORMING CHAT HISTORY SYNC FOR " + JSON.stringify(args));
@@ -385,7 +386,7 @@ syncChatAssistant.prototype.run = function(future) {
       }
       else {
          logNoticeably("could not find account username in DB8\n");
-         future.result = { returnValue: true };
+         future.result = { returnValue: false };
       }
    });
 
@@ -409,9 +410,9 @@ syncChatAssistant.prototype.run = function(future) {
             logNoticeably("syncPort="+syncPort +"\n");
             logNoticeably("sync credentials="+username + " - " + password +"\n");
    
-            //Next (in the "future") we'll get our saved messages
-            var q = {"from":"com.wosa.imessage.immessage:1"};  //TODO: we could specify a tighter query here
-            return DB.find(q, false, false); 
+            //Next (in the "future") we'll get our saved messages for this thread
+            var q = {"from":"com.wosa.imessage.immessage:1", "where": [{"prop": "iMessageId", "op": "=", "val": iMessageThreadId}]};
+            return DB.find(q, false, false);
          } else {
             logNoticeably("The Sync Server was not defined, so sync cannot proceed");
             future.result = {returnValue: false};
@@ -424,7 +425,10 @@ syncChatAssistant.prototype.run = function(future) {
 
    //Retreive our saved messages from db8
    f.then(this, function(future) {
-      if (future.result.results.length > 0) {
+      if (!future.result.returnValue) {
+         return;
+      }
+      if (future.result.results && future.result.results.length > 0) {
          storedMessages = future.result.results;
       }
 
@@ -447,7 +451,7 @@ syncChatAssistant.prototype.run = function(future) {
          var body = future.result.data;
          logNoticeably("history httpRequest result body: " + JSON.stringify(future.result));
 
-         imsgDispatches = JSON.parse(body);
+         var imsgDispatches = JSON.parse(body);
          for (var d=0;d<imsgDispatches.length;d++) {
             var thisDispatch=imsgDispatches[d];
             var msgTS = Date.parse(thisDispatch.received);
@@ -527,9 +531,9 @@ var onDeleteAssistant = function(future){};
 onDeleteAssistant.prototype.run = function(future) { 
 // Account deleted - Synergy service should delete account and config information here.
 
+   var args = this.controller.args;
    logNoticeably("onDelete args =" + JSON.stringify(args));
    future.result = {returnValue: true};
-   var args = this.controller.args;
 
    //Cancel activity (fire and forget)
    PalmCall.call("palm://com.palm.activitymanager/", "cancel", { "activityName":"iMessagePeriodicSync" });
