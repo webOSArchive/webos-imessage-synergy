@@ -26,7 +26,7 @@ enyo.kind({
 		]},
 		
 		{kind: "Scroller", flex: 1, className: "box-center", name: "mainscroller", components: [
-			{name:"txtServerInfo", className: "footnote-text", style:"margin-top: 14px", content:"iMessage synchronization requires a Message Bridge server running on a Mac on your network. Enter the details of your server. For more information, visit:<br><a href='https://github.com/dremin/message-bridge'>https://github.com/dremin/message-bridge</a>"},
+			{name:"txtServerInfo", className: "footnote-text", style:"margin-top: 14px", content:"iMessage synchronization requires a Message Bridge server running on a Mac on your network. Enter the IP or hostname of your server. Do not enter http:// or https:// as only http is supported, and will be added automatically. For more information, visit:<br><a href='https://github.com/dremin/message-bridge'>https://github.com/dremin/message-bridge</a>"},
 			{
 				kind: "RowGroup",
 				caption: "Server",

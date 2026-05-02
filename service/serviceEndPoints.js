@@ -1,5 +1,6 @@
 require.paths.push("./node_modules");
 var child_process = require('child_process');
+var fs = require('fs');
 
 //This is where actual implementations of the Synergy functions are done
 // The mapping of the Synergy call to these end-points is in services.json
@@ -261,26 +262,39 @@ syncAssistant.prototype.run = function(future) {
             if (!foundStoredChat) {
                logNoticeably("the remote thread with id " + thisThread.id + " did not exist locally, creating...");
                createdChatThread = true;
-               var msgTS = Date.parse(thisThread.lastReceived);
-               var replyAddress = thisThread.replyId.split(";-;");
-               var replyAddingress = replyAddress[replyAddress.length-1];
-               var dbThread = {
-                  _kind: "com.wosa.imessage.chatthread:1",
-                  flags:{visible:true},
-                  normalizedAddress: username,
-                  displayName: thisThread.name,
-                  replyAddress: replyAddress,
-                  iMessageReplyId: thisThread.replyId,
-                  replyService: "iMessage",
-                  summary: thisThread.lastMessage,
-                  iMessageId: thisThread.id,
-                  timestamp: msgTS,
-               }
-               //This is a fire and forget future call...
-               DB.put([dbThread]).then(function(chatput) {
-                  logNoticeably("put chat thread for iMessage id: " + thisThread.id + " with initial message: " + JSON.stringify(dbThread));
-               });
-               createdChatThread = true;
+               // IIFE captures thisThread by value so the async DB.put callback sees the right thread
+               (function(thread) {
+                  var msgTS = Date.parse(thread.lastReceived);
+                  var replyParts = thread.replyId.split(";-;");
+                  var replyAddress = replyParts[replyParts.length - 1];
+                  var dbThread = {
+                     _kind: "com.wosa.imessage.chatthread:1",
+                     flags:{visible:true},
+                     normalizedAddress: username,
+                     displayName: thread.name,
+                     replyAddress: replyAddress,
+                     iMessageReplyId: thread.replyId,
+                     replyService: "iMessage",
+                     summary: thread.lastMessage,
+                     iMessageId: thread.id,
+                     timestamp: msgTS,
+                  };
+                  DB.put([dbThread]).then(function(chatput) {
+                     if (chatput.result.returnValue === true) {
+                        var newId = chatput.result.results[0].id;
+                        logNoticeably("put chat thread for iMessage id: " + thread.id + ", syncing initial messages...");
+                        // Sync messages now that we have the DB8 _id — no recursion risk because
+                        // we're calling syncChat directly, not sync, and the thread record exists.
+                        PalmCall.call("palm://com.wosa.imessage.service/", "syncChat", {
+                           conversationId: newId,
+                           iMessageId: thread.id,
+                           replyId: thread.replyId
+                        });
+                     } else {
+                        logNoticeably("FAILED to put chat thread for iMessage id: " + thread.id);
+                     }
+                  });
+               })(thisThread);
             }
          }
          // Don't recursively call sync here - new threads will be populated on the next periodic sync.
@@ -596,22 +610,180 @@ httpRequestAssistant.prototype.run = function(future) {
    var host = args.host || "imessageserver";
    var port = args.port || "8080";
    var path = args.path || "/";
-   
+
+   // Strip protocol prefix if the caller included it (e.g. "http://192.168.1.1")
+   if (host.indexOf("://") !== -1) {
+      host = host.split("://")[1];
+   }
+   // Strip any port already embedded in the host (use the port param instead)
+   if (host.indexOf(":") !== -1) {
+      host = host.split(":")[0];
+   }
+
    var url = "http://" + host + ":" + port + path;
-   var cmd = "wget -q -O -";
-   
-   cmd += " " + url;
-   console.log("Child Process command: " + cmd);
-   var child = child_process.exec(cmd, function(error, stdout, stderr) {
-      future.result = { returnValue: error == null, data: stdout, file: args.savefile };
-   });
+   var method = args.method || "GET";
+   var body = args.body || null;
+
+   if (method === "POST" && body) {
+      // Write body to a temp file so we never have to shell-escape the content
+      var tmpFile = "/tmp/imsg_post_" + Date.now() + ".json";
+      fs.writeFile(tmpFile, body, function(writeErr) {
+         if (writeErr) {
+            console.log("httpRequest: failed to write temp file: " + writeErr);
+            future.result = { returnValue: false, data: "" };
+            return;
+         }
+         var cmd = "wget -q -O - --post-file=" + tmpFile + " --header='Content-Type: application/json' " + url;
+         console.log("Child Process command: " + cmd);
+         child_process.exec(cmd, function(error, stdout, stderr) {
+            fs.unlink(tmpFile, function() {});
+            future.result = { returnValue: error == null, data: stdout };
+         });
+      });
+   } else {
+      var cmd = "wget -q -O - " + url;
+      console.log("Child Process command: " + cmd);
+      child_process.exec(cmd, function(error, stdout, stderr) {
+         future.result = { returnValue: error == null, data: stdout, file: args.savefile };
+      });
+   }
    return;
 }
 
-//TODO...
-
 var sendIM = function(future){};
-sendIM.prototype.run = function(future) { 
+sendIM.prototype.run = function(future) {
+   var args = this.controller.args;
    logNoticeably("sendIM args =" + JSON.stringify(args));
+
+   if (!args || !args.messageText) {
+      logNoticeably("sendIM: missing required messageText");
+      future.result = {returnValue: false};
+      return;
+   }
+
+   var syncServer = "";
+   var syncPort = 8080;
+   var messageText = args.messageText;
+   var iMessageReplyId = null;
+   var conversationDbId = null;
+   var iMessageThreadNumericId = null;
+   // webOS pre-creates a pending DB8 record and passes its _id here so we can update it.
+   // Check multiple possible field names for compatibility.
+   var pendingMsgId = args._id || (args.message && args.message._id) || null;
+   logNoticeably("sendIM: pendingMsgId=" + pendingMsgId);
+
+   // Step 1: Get transport config
+   var q = {"query":{"from":"com.wosa.imessage.transport:1"}};
+   var f = PalmCall.call("palm://com.palm.db/", "find", q).then(function(future) {
+      if (future.result.returnValue === true && future.result.results && future.result.results.length > 0) {
+         syncServer = future.result.results[0].messageBridgeServer;
+         syncPort = future.result.results[0].messageBridgePort;
+         if (syncServer.indexOf("http:") != -1) {
+            syncServer = syncServer.replace("http://", "");
+            var parts = syncServer.split(":");
+            syncServer = parts[0];
+         }
+         // Step 2: Look up the chat thread to get iMessageReplyId for the Message Bridge POST.
+         // The message record has to[0].addr (not a top-level replyAddress field), and
+         // args.conversations[0] is the chatthread's DB8 _id — use that for a direct get.
+         var conversationsId = (args.conversations && args.conversations.length > 0) ? args.conversations[0] : null;
+         if (conversationsId) {
+            logNoticeably("sendIM: looking up thread by conversations id=" + conversationsId);
+            return PalmCall.call("palm://com.palm.db/", "get", {"ids": [conversationsId]});
+         } else {
+            // Fallback: search by address (args.replyAddress or args.to[0].addr)
+            var lookupAddr = "";
+            if (args.replyAddress) {
+               lookupAddr = Array.isArray(args.replyAddress) ? args.replyAddress[args.replyAddress.length - 1] : args.replyAddress;
+            } else if (args.to && args.to.length > 0) {
+               lookupAddr = args.to[0].addr || "";
+            }
+            logNoticeably("sendIM: looking up thread by replyAddress=" + lookupAddr);
+            var threadQuery = {"from":"com.wosa.imessage.chatthread:1", "where":[{"prop":"replyAddress","op":"=","val":lookupAddr}]};
+            return DB.find(threadQuery, false, false);
+         }
+      } else {
+         logNoticeably("sendIM: could not find transport config");
+         future.result = {returnValue: false};
+      }
+   });
+
+   // Step 3: POST message to Message Bridge
+   f.then(this, function(future) {
+      if (!future.result.returnValue) return;
+      if (!future.result.results || future.result.results.length === 0) {
+         logNoticeably("sendIM: could not find matching chat thread for replyAddress=" + JSON.stringify(args.replyAddress));
+         future.result = {returnValue: false};
+         return;
+      }
+      var thread = future.result.results[0];
+      iMessageReplyId = thread.iMessageReplyId;
+      conversationDbId = thread._id;
+      iMessageThreadNumericId = thread.iMessageId;
+      logNoticeably("sendIM: posting message to thread " + iMessageReplyId);
+      var postBody = JSON.stringify({address: iMessageReplyId, isReply: true, message: messageText});
+      return PalmCall.call("palm://com.wosa.imessage.service", "httpRequest", {
+         host: syncServer,
+         port: syncPort,
+         path: "/chats",
+         method: "POST",
+         body: postBody,
+         binary: false
+      });
+   });
+
+   // Step 4: Mark the pre-created pending message as successful (or create one if none exists).
+   // webOS creates a DB8 record with status:"pending" before calling sendIM and expects us to
+   // flip it to "successful" — if we create a new record instead, the original stays stuck forever.
+   f.then(this, function(future) {
+      if (!future.result.returnValue) {
+         logNoticeably("sendIM: POST to Message Bridge failed");
+         if (pendingMsgId) {
+            DB.merge([{_kind: "com.wosa.imessage.immessage:1", "_id": pendingMsgId, "status": "failed"}]).then(function(r) {
+               logNoticeably("sendIM: marked pending message as failed, result=" + JSON.stringify(r.result));
+            });
+         }
+         future.result = {returnValue: false};
+         return;
+      }
+      logNoticeably("sendIM: Message Bridge accepted send, response=" + future.result.data);
+      if (pendingMsgId) {
+         logNoticeably("sendIM: updating pre-created pending message " + pendingMsgId + " to successful");
+         return DB.merge([{_kind: "com.wosa.imessage.immessage:1", "_id": pendingMsgId, "status": "successful"}]);
+      } else {
+         logNoticeably("sendIM: no pendingMsgId, creating new outbound message record");
+         var msgTS = new Date().getTime();
+         var recipientAddr = iMessageReplyId ? iMessageReplyId.split(";-;").pop() : "";
+         var dbMsg = {
+            _kind: "com.wosa.imessage.immessage:1",
+            _sync: true,
+            flags: {read: true},
+            folder: "outbox",
+            conversations: [conversationDbId],
+            localTimestamp: msgTS,
+            messageText: messageText,
+            serviceName: "iMessage",
+            status: "successful",
+            to: [{addr: recipientAddr, name: recipientAddr}],
+            iMessageId: iMessageThreadNumericId,
+         };
+         return DB.put([dbMsg]);
+      }
+   });
+
+   // Step 5: Update thread summary so the chat list reflects the sent message
+   f.then(this, function(future) {
+      if (future.result.returnValue === true) {
+         logNoticeably("sendIM: stored outbound message in DB8");
+         var msgTS = new Date().getTime();
+         DB.merge([{_kind:"com.wosa.imessage.chatthread:1", "_id":conversationDbId, "summary":messageText, "timestamp":msgTS}]).then(function(r) {
+            logNoticeably("sendIM: updated thread summary");
+         });
+      } else {
+         logNoticeably("sendIM: failed to store outbound message");
+      }
+      future.result = {returnValue: true};
+   });
+
    future.result = {returnValue: true};
-}
+};
