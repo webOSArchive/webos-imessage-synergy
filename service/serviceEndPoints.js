@@ -1,6 +1,6 @@
 require.paths.push("./node_modules");
 var child_process = require('child_process');
-var fs = require('fs');
+var http = require('http');
 
 //This is where actual implementations of the Synergy functions are done
 // The mapping of the Synergy call to these end-points is in services.json
@@ -332,6 +332,50 @@ syncAssistant.prototype.run = function(future) {
          }
       }
    };
+   // Set up a DB-triggered activity so processOutbox fires immediately when any message
+   // is put to the outbox with status=pending. Pattern from synergv2 (ericblade):
+   // "key":"fired" tells ActivityManager to watch for fired:true in the db/watch response.
+   // persist:true + restart:true in complete() keeps the watch alive continuously.
+   var outboxWatchActivity = {
+      "start": true,
+      "replace": true,
+      "activity": {
+         "name": "iMessageOutboxWatch",
+         "description": "Watch for pending iMessage outbox messages to send",
+         "type": {
+            "foreground": true,
+            "power": true,
+            "powerDebounce": true,
+            "explicit": true,
+            "persist": true
+         },
+         "requirements": {
+            "internet": true
+         },
+         "trigger": {
+            "method": "palm://com.palm.db/watch",
+            "key": "fired",
+            "params": {
+               "query": {
+                  "from": "com.wosa.imessage.immessage:1",
+                  "where": [
+                     {"prop": "status", "op": "=", "val": "pending"},
+                     {"prop": "folder", "op": "=", "val": "outbox"}
+                  ]
+               },
+               "subscribe": true
+            }
+         },
+         "callback": {
+            "method": "palm://com.wosa.imessage.service/processOutbox",
+            "params": {}
+         }
+      }
+   };
+   PalmCall.call("palm://com.palm.activitymanager/", "create", outboxWatchActivity).then(function(f) {
+      logNoticeably("outbox watch activity create result=" + JSON.stringify(f.result));
+   });
+
    // for some reason, the activity no longer exists by the time we get here, so instead of
    // completing it, we re-create it. i guess.
    logNoticeably("sync interval complete completed, restarting sync interval every " + syncInterval);
@@ -535,11 +579,54 @@ var periodicSync = function(future){}
 periodicSync.prototype.run = function(future) {
    logNoticeably("periodicSync run");
    PalmCall.call("palm://com.wosa.imessage.service/", "sync", {timedSync: true});
+   PalmCall.call("palm://com.wosa.imessage.service/", "processOutbox", {});
    future.result = { returnValue: true };
 };
 periodicSync.prototype.complete = function() {
    logNoticeably("periodicSync complete!");
 }
+
+// The Synergy framework does not automatically call sendIM when a message is put to the outbox.
+// processOutbox finds all pending outbox messages and dispatches each to sendIM. It is called
+// both by periodicSync (fallback) and by the iMessageOutboxWatch ActivityManager DB-trigger
+// activity (immediate response). The complete() method uses restart:true to re-arm the watch.
+var processOutbox = function(future){};
+processOutbox.prototype.run = function(future) {
+   logNoticeably("processOutbox: checking for pending outbox messages");
+   // Index order must match the statusFolder compound index: status first, then folder.
+   var q = {"query": {
+      "from": "com.wosa.imessage.immessage:1",
+      "where": [
+         {"prop": "status", "op": "=", "val": "pending"},
+         {"prop": "folder", "op": "=", "val": "outbox"}
+      ]
+   }};
+   PalmCall.call("palm://com.palm.db/", "find", q).then(function(f) {
+      if (f.result.returnValue === true && f.result.results && f.result.results.length > 0) {
+         logNoticeably("processOutbox: found " + f.result.results.length + " pending message(s), dispatching...");
+         for (var i = 0; i < f.result.results.length; i++) {
+            var msg = f.result.results[i];
+            logNoticeably("processOutbox: dispatching sendIM for _id=" + msg._id + " text=" + msg.messageText);
+            PalmCall.call("palm://com.wosa.imessage.service/", "sendIM", msg);
+         }
+      } else {
+         logNoticeably("processOutbox: no pending outbox messages");
+      }
+   });
+   future.result = {returnValue: true};
+};
+processOutbox.prototype.complete = function() {
+   logNoticeably("processOutbox complete");
+   // Re-arm the DB-trigger activity so it fires again on the next pending outbox message.
+   // When called via ActivityManager callback, activityId is set; when called directly it is not.
+   if (this.controller && this.controller.activityId) {
+      logNoticeably("processOutbox: restarting outbox watch activity");
+      PalmCall.call("palm://com.palm.activitymanager/", "complete", {
+         activityId: this.controller.activityId,
+         restart: true
+      });
+   }
+};
 
 var onDeleteAssistant = function(future){};
 onDeleteAssistant.prototype.run = function(future) { 
@@ -549,8 +636,9 @@ onDeleteAssistant.prototype.run = function(future) {
    logNoticeably("onDelete args =" + JSON.stringify(args));
    future.result = {returnValue: true};
 
-   //Cancel activity (fire and forget)
+   //Cancel activities (fire and forget)
    PalmCall.call("palm://com.palm.activitymanager/", "cancel", { "activityName":"iMessagePeriodicSync" });
+   PalmCall.call("palm://com.palm.activitymanager/", "cancel", { "activityName":"iMessageOutboxWatch" });
 
    //Clean up transport, then..
    var q = {"query":{"from":"com.wosa.imessage.transport:1"}};
@@ -625,21 +713,31 @@ httpRequestAssistant.prototype.run = function(future) {
    var body = args.body || null;
 
    if (method === "POST" && body) {
-      // Write body to a temp file so we never have to shell-escape the content
-      var tmpFile = "/tmp/imsg_post_" + Date.now() + ".json";
-      fs.writeFile(tmpFile, body, function(writeErr) {
-         if (writeErr) {
-            console.log("httpRequest: failed to write temp file: " + writeErr);
-            future.result = { returnValue: false, data: "" };
-            return;
+      var postOptions = {
+         host: host,
+         port: parseInt(port),
+         path: path,
+         method: "POST",
+         headers: {
+            "Content-Type": "application/json",
+            "Content-Length": body.length
          }
-         var cmd = "wget -q -O - --post-file=" + tmpFile + " --header='Content-Type: application/json' " + url;
-         console.log("Child Process command: " + cmd);
-         child_process.exec(cmd, function(error, stdout, stderr) {
-            fs.unlink(tmpFile, function() {});
-            future.result = { returnValue: error == null, data: stdout };
+      };
+      logNoticeably("httpRequest POST to " + url + " body=" + body);
+      var req = http.request(postOptions, function(res) {
+         var responseData = "";
+         res.on("data", function(chunk) { responseData += chunk; });
+         res.on("end", function() {
+            logNoticeably("httpRequest POST status=" + res.statusCode + " data=" + responseData);
+            future.result = { returnValue: res.statusCode < 400, data: responseData };
          });
       });
+      req.on("error", function(e) {
+         logNoticeably("httpRequest POST network error: " + e.message);
+         future.result = { returnValue: false, data: "" };
+      });
+      req.write(body);
+      req.end();
    } else {
       var cmd = "wget -q -O - " + url;
       console.log("Child Process command: " + cmd);
@@ -708,7 +806,7 @@ sendIM.prototype.run = function(future) {
       }
    });
 
-   // Step 3: POST message to Message Bridge
+   // Step 3: POST message to Message Bridge inline (avoids PalmCall returnValue:false exception propagation)
    f.then(this, function(future) {
       if (!future.result.returnValue) return;
       if (!future.result.results || future.result.results.length === 0) {
@@ -720,16 +818,35 @@ sendIM.prototype.run = function(future) {
       iMessageReplyId = thread.iMessageReplyId;
       conversationDbId = thread._id;
       iMessageThreadNumericId = thread.iMessageId;
-      logNoticeably("sendIM: posting message to thread " + iMessageReplyId);
+      logNoticeably("sendIM: posting message to thread " + iMessageReplyId + " via " + syncServer + ":" + syncPort);
       var postBody = JSON.stringify({address: iMessageReplyId, isReply: true, message: messageText});
-      return PalmCall.call("palm://com.wosa.imessage.service", "httpRequest", {
+      logNoticeably("sendIM: POST body=" + postBody);
+      var httpFuture = new Future();
+      var postOptions = {
          host: syncServer,
-         port: syncPort,
+         port: parseInt(syncPort),
          path: "/chats",
          method: "POST",
-         body: postBody,
-         binary: false
+         headers: {
+            "Content-Type": "application/json",
+            "Content-Length": postBody.length
+         }
+      };
+      var req = http.request(postOptions, function(res) {
+         var responseData = "";
+         res.on("data", function(chunk) { responseData += chunk; });
+         res.on("end", function() {
+            logNoticeably("sendIM: POST status=" + res.statusCode + " data=" + responseData);
+            httpFuture.result = {returnValue: res.statusCode < 400, statusCode: res.statusCode, data: responseData};
+         });
       });
+      req.on("error", function(e) {
+         logNoticeably("sendIM: POST network error: " + e.message);
+         httpFuture.result = {returnValue: false, statusCode: 0, data: ""};
+      });
+      req.write(postBody);
+      req.end();
+      return httpFuture;
    });
 
    // Step 4: Mark the pre-created pending message as successful (or create one if none exists).

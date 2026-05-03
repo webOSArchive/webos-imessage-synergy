@@ -15,6 +15,13 @@
             "props": [
                 { "name": "iMessageId" }
             ]
+        },
+        {
+            "name": "statusFolder",
+            "props": [
+                { "name": "status" },
+                { "name": "folder" }
+            ]
         }
     ]
 }

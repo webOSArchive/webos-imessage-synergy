@@ -59,10 +59,15 @@
                "assistant":"onDeleteAssistant",
                "public":true
             },
-            { 
-               "name": "sendIM", 
-               "assistant": "sendIM", 
-               "public": true 
+            {
+               "name": "sendIM",
+               "assistant": "sendIM",
+               "public": true
+            },
+            {
+               "name": "processOutbox",
+               "assistant": "processOutbox",
+               "public": true
             }
          ]
       }
