@@ -2,7 +2,7 @@
   "id": "com.wosa.imessage",
   "package_format_version": 2,
   "loc_name": "iMessage Bridge Client for webOS",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "vendor": "webOS Archive",
   "vendorurl": "www.webosarchive.org",
   "app": "com.wosa.imessage",

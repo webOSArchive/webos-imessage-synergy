@@ -42,5 +42,8 @@ The server running at `192.168.10.3:8080` is the Message Bridge instance on Jon'
 ### `sendIM` `replyAddress` format unverified
 `sendIM` now POSTs to `POST /chats` with `{"address": iMessageReplyId, "isReply": true, "message": text}`. It looks up the thread by matching `iMessageReplyId` against whatever webOS passes as `args.replyAddress` (joined with `";-;"` if it's an array). The exact format webOS uses for `replyAddress` when calling `sendIM` is untested — check the logs on first use to see what actually arrives.
 
+## Sync delta optimization (May 2026)
+`syncAssistant` previously called `syncChat` for every stored thread on every cycle (N HTTP requests). It now compares each remote thread's `lastReceived` ISO string against the `iMessageLastReceived` field stored in the DB8 chatthread record. `syncChat` is only called when that value has changed, so steady-state (no new messages) costs exactly 1 HTTP request (`GET /chats`). The field is written on `DB.put` for new threads and via `DB.merge` immediately before calling `syncChat` for changed threads. Existing threads without `iMessageLastReceived` will do one extra syncChat on the first cycle after upgrade (graceful migration).
+
 ## Deployment note
 After installing a new .ipk, the service process continues running the old code. You must restart Luna or remove/re-add the Synergy account for changes to take effect. See `notes.md` → Debugging section for the restart command.

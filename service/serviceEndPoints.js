@@ -219,13 +219,9 @@ syncAssistant.prototype.run = function(future) {
       }
 
       logNoticeably("1. THERE ARE " + storedChatThreads.length + " STORED CHAT THREADS");
-      //Sync messages for any stored chat threads
-      for (var i=0;i<storedChatThreads.length;i++) {
-         logNoticeably(" **** STORED: " + JSON.stringify(storedChatThreads[i]));
-         logNoticeably(" **** ARGS: " + JSON.stringify({conversationId: storedChatThreads[i]._id, iMessageId: storedChatThreads[i].iMessageId, replyId: storedChatThreads[i].iMessageReplyId}));
-         PalmCall.call("palm://com.wosa.imessage.service/", "syncChat", {conversationId: storedChatThreads[i]._id, iMessageId: storedChatThreads[i].iMessageId, replyId: storedChatThreads[i].iMessageReplyId});
-      }
-      
+      // syncChat calls are now deferred until we compare against remote lastReceived timestamps.
+      // Only threads with changed content will be synced — see remote thread loop below.
+
       //Next (in the "future") we'll get remote chat threads
       var chatsQuery = {
          host: syncServer,
@@ -246,22 +242,41 @@ syncAssistant.prototype.run = function(future) {
          logNoticeably("got httpRequests result: " + JSON.stringify(future.result.data));
          remoteChatThreads = JSON.parse(future.result.data);
 
-         //Store any chat threads we didn't already know about
-         var createdChatThread = false;
+         // For each remote thread, find its local counterpart and do a delta check.
+         // Only call syncChat when lastReceived has changed (new message) or the thread is new.
+         // This avoids hammering the bridge with per-thread requests when nothing has changed.
          for (var i=0;i<remoteChatThreads.length;i++) {
 
             var thisThread = remoteChatThreads[i];
-            var foundStoredChat = false;
+            var matchedChat = null;
             for (var c=0;c<storedChatThreads.length;c++) {
                var thisChat = storedChatThreads[c];
                if (thisChat.iMessageId && thisThread.id == thisChat.iMessageId) {
-                  foundStoredChat = true;
+                  matchedChat = thisChat;
                   break;
                }
             }
-            if (!foundStoredChat) {
+
+            if (matchedChat) {
+               // Thread is known locally — only fetch messages if the bridge reports new content.
+               // iMessageLastReceived is the ISO timestamp stored from the previous sync cycle.
+               (function(thread, storedChat) {
+                  if (storedChat.iMessageLastReceived !== thread.lastReceived) {
+                     logNoticeably("thread " + thread.id + " changed (remote=" + thread.lastReceived + " stored=" + storedChat.iMessageLastReceived + "), syncing");
+                     PalmCall.call("palm://com.wosa.imessage.service/", "syncChat", {
+                        conversationId: storedChat._id,
+                        iMessageId: storedChat.iMessageId,
+                        replyId: storedChat.iMessageReplyId
+                     });
+                     DB.merge([{_kind:"com.wosa.imessage.chatthread:1", "_id":storedChat._id, "iMessageLastReceived": thread.lastReceived}]).then(function(r) {
+                        logNoticeably("updated iMessageLastReceived for thread " + thread.id + ": " + JSON.stringify(r.result));
+                     });
+                  } else {
+                     logNoticeably("thread " + thread.id + " unchanged (lastReceived=" + thread.lastReceived + "), skipping syncChat");
+                  }
+               })(thisThread, matchedChat);
+            } else {
                logNoticeably("the remote thread with id " + thisThread.id + " did not exist locally, creating...");
-               createdChatThread = true;
                // IIFE captures thisThread by value so the async DB.put callback sees the right thread
                (function(thread) {
                   var msgTS = Date.parse(thread.lastReceived);
@@ -278,6 +293,7 @@ syncAssistant.prototype.run = function(future) {
                      summary: thread.lastMessage,
                      iMessageId: thread.id,
                      timestamp: msgTS,
+                     iMessageLastReceived: thread.lastReceived,
                   };
                   DB.put([dbThread]).then(function(chatput) {
                      if (chatput.result.returnValue === true) {
