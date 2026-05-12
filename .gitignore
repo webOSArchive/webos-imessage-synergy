@@ -1,2 +1,3 @@
 *.ipk
 com.palm.app.messaging
+.DS_Store
