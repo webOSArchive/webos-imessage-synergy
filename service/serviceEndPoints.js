@@ -329,8 +329,9 @@ syncAssistant.prototype.run = function(future) {
          "name": "iMessagePeriodicSync",
          "description": "Recreate Periodic Sync of incoming messages from iMessage",
          "type": {
-            "foreground": true,
+            "background": true,
             "power": true,
+            "powerDebounce": true,
             "explicit": true,
             "persist": true
          },
@@ -607,25 +608,53 @@ periodicSync.prototype.complete = function() {
 // activity (immediate response). The complete() method uses restart:true to re-arm the watch.
 var processOutbox = function(future){};
 processOutbox.prototype.run = function(future) {
-   logNoticeably("processOutbox: checking for pending outbox messages");
+   logNoticeably("processOutbox: checking for pending and failed outbox messages");
+   var maxRetries = 3;
+   var allMessages = [];
    // Index order must match the statusFolder compound index: status first, then folder.
-   var q = {"query": {
+   var pendingQ = {"query": {
       "from": "com.wosa.imessage.immessage:1",
       "where": [
          {"prop": "status", "op": "=", "val": "pending"},
          {"prop": "folder", "op": "=", "val": "outbox"}
       ]
    }};
-   PalmCall.call("palm://com.palm.db/", "find", q).then(function(f) {
+   var failedQ = {"query": {
+      "from": "com.wosa.imessage.immessage:1",
+      "where": [
+         {"prop": "status", "op": "=", "val": "failed"},
+         {"prop": "folder", "op": "=", "val": "outbox"}
+      ]
+   }};
+   var pf = PalmCall.call("palm://com.palm.db/", "find", pendingQ).then(function(f) {
       if (f.result.returnValue === true && f.result.results && f.result.results.length > 0) {
-         logNoticeably("processOutbox: found " + f.result.results.length + " pending message(s), dispatching...");
+         for (var i = 0; i < f.result.results.length; i++) {
+            allMessages.push(f.result.results[i]);
+         }
+      }
+      return PalmCall.call("palm://com.palm.db/", "find", failedQ);
+   });
+   pf.then(function(f) {
+      if (f.result.returnValue === true && f.result.results && f.result.results.length > 0) {
          for (var i = 0; i < f.result.results.length; i++) {
             var msg = f.result.results[i];
-            logNoticeably("processOutbox: dispatching sendIM for _id=" + msg._id + " text=" + msg.messageText);
-            PalmCall.call("palm://com.wosa.imessage.service/", "sendIM", msg);
+            var attempts = msg.sendAttempts || 0;
+            if (attempts < maxRetries) {
+               logNoticeably("processOutbox: queuing retry for failed _id=" + msg._id + " (attempt " + (attempts + 1) + ")");
+               allMessages.push(msg);
+            } else {
+               logNoticeably("processOutbox: giving up on _id=" + msg._id + " after " + attempts + " failed attempts");
+            }
+         }
+      }
+      if (allMessages.length > 0) {
+         logNoticeably("processOutbox: dispatching sendIM for " + allMessages.length + " message(s)");
+         for (var i = 0; i < allMessages.length; i++) {
+            logNoticeably("processOutbox: dispatching sendIM for _id=" + allMessages[i]._id + " text=" + allMessages[i].messageText);
+            PalmCall.call("palm://com.wosa.imessage.service/", "sendIM", allMessages[i]);
          }
       } else {
-         logNoticeably("processOutbox: no pending outbox messages");
+         logNoticeably("processOutbox: no outbox messages to process");
       }
    });
    future.result = {returnValue: true};
@@ -821,7 +850,7 @@ sendIM.prototype.run = function(future) {
       }
    });
 
-   // Step 3: POST message to Message Bridge inline (avoids PalmCall returnValue:false exception propagation)
+   // Step 3: POST message to Message Bridge via http.request (BusyBox wget lacks --post-file/--post-data)
    f.then(this, function(future) {
       if (!future.result.returnValue) return;
       if (!future.result.results || future.result.results.length === 0) {
@@ -871,8 +900,9 @@ sendIM.prototype.run = function(future) {
       if (!future.result.returnValue) {
          logNoticeably("sendIM: POST to Message Bridge failed");
          if (pendingMsgId) {
-            DB.merge([{_kind: "com.wosa.imessage.immessage:1", "_id": pendingMsgId, "status": "failed"}]).then(function(r) {
-               logNoticeably("sendIM: marked pending message as failed, result=" + JSON.stringify(r.result));
+            var attempts = (args.sendAttempts || 0) + 1;
+            DB.merge([{_kind: "com.wosa.imessage.immessage:1", "_id": pendingMsgId, "status": "failed", "sendAttempts": attempts}]).then(function(r) {
+               logNoticeably("sendIM: marked pending message as failed (attempt " + attempts + "), result=" + JSON.stringify(r.result));
             });
          }
          future.result = {returnValue: false};

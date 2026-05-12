@@ -15,6 +15,12 @@
             "props": [
                 { "name": "iMessageReplyId" }
             ]
+        },
+        {
+            "name": "replyAddress",
+            "props": [
+                { "name": "replyAddress" }
+            ]
         }
     ]
 }
