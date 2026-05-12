@@ -329,10 +329,8 @@ syncAssistant.prototype.run = function(future) {
          "name": "iMessagePeriodicSync",
          "description": "Recreate Periodic Sync of incoming messages from iMessage",
          "type": {
-            "foreground": true,
             "background": true,
             "power": true,
-            "powerDebounce": true,
             "explicit": true,
             "persist": true
          },
